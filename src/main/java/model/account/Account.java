@@ -21,7 +21,7 @@ import java.time.LocalDateTime;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 @SuperBuilder(toBuilder = true)
 public abstract class Account extends BaseEntity {
-    @Column(nullable = false, unique = true)
+    @Column(name = "account_number", nullable = false, unique = true)
     private String accountNumber;
 
     @Embedded
@@ -35,6 +35,7 @@ public abstract class Account extends BaseEntity {
                 column = @Column(name = "balance_currency", nullable = false, length = 3)
         )
     })
+    @Column(nullable = false)
     private Money balance;
 
     @Enumerated(EnumType.STRING)
@@ -42,7 +43,7 @@ public abstract class Account extends BaseEntity {
     @Builder.Default
     private AccountStatus status = AccountStatus.ACTIVE;
 
-    @Column
+    @Column(name = "closed_at")
     private LocalDateTime closedAt;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
