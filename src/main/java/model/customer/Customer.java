@@ -52,6 +52,6 @@ public class Customer extends BaseEntity {
         return "Full Name: " + getFullName() +
                 "\nEmail: " + email +
                 "\nPhone Number: " + phoneNumber +
-                "\nAccounts: " + (accounts == null ? "[]" : ConvertUtils.listToString(accounts, Account::getId));
+                "\nAccounts: " + (accounts.isEmpty() ? "[]" : ConvertUtils.listToString(accounts, Account::getId));
     }
 }
