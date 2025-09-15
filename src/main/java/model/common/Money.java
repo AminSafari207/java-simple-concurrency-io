@@ -50,6 +50,10 @@ public class Money {
         return this.amount.signum() < 0;
     }
 
+    public boolean isNegativeOrZero() {
+        return this.amount.signum() <= 0;
+    }
+
     private void validateSameCurrency(Money other) {
         if (!Objects.equals(this.currency, other.currency)) {
             throw new IllegalArgumentException("Currency mismatch: " + this.currency + " != " + other.currency);
