@@ -54,6 +54,10 @@ public abstract class Account extends BaseEntity {
         this.customer = customer;
     }
 
+    protected void setBalance(Money other) {
+        this.balance = other;
+    }
+
     public boolean canDebit(Money amount) {
         return balance != null && !amount.isNegative() && balance.isGreaterOrEqual(amount);
     }
