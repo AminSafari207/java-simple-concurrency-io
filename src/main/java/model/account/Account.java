@@ -2,10 +2,7 @@ package model.account;
 
 import enums.AccountStatus;
 import jakarta.persistence.*;
-import lombok.AccessLevel;
-import lombok.Builder;
-import lombok.Getter;
-import lombok.NoArgsConstructor;
+import lombok.*;
 import lombok.experimental.SuperBuilder;
 import model.common.BaseEntity;
 import model.common.Money;
@@ -36,6 +33,7 @@ public abstract class Account extends BaseEntity {
         )
     })
     @Column(nullable = false)
+    @Setter
     private Money balance;
 
     @Enumerated(EnumType.STRING)
@@ -52,10 +50,6 @@ public abstract class Account extends BaseEntity {
 
     protected void setCustomer(Customer customer) {
         this.customer = customer;
-    }
-
-    protected void setBalance(Money other) {
-        this.balance = other;
     }
 
     public boolean canDebit(Money amount) {
