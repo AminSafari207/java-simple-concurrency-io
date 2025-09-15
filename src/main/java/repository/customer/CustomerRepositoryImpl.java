@@ -14,7 +14,7 @@ public class CustomerRepositoryImpl extends AbstractBaseRepository<Customer, Lon
 
     @Override
     public Optional<Customer> findByEmail(String email) {
-        List<Customer> list = em.createQuery("select c from " + getEntityName() + " where c.email = :email", getEntityClassRef())
+        List<Customer> list = em.createQuery("select c from " + getEntityName() + " c where c.email = :email", Customer.class)
                 .setParameter("email", email)
                 .setMaxResults(1)
                 .getResultList();
