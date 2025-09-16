@@ -14,9 +14,11 @@ import repository.account.AccountRepositoryImpl;
 import repository.transaction.TransactionRepository;
 import repository.transaction.TransactionRepositoryImpl;
 import service.base.TransactionalService;
+import utils.concurrency.AccountLocks;
 
 import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.locks.ReentrantLock;
 
 public class AccountServiceImpl extends TransactionalService implements AccountService {
 
@@ -28,126 +30,159 @@ public class AccountServiceImpl extends TransactionalService implements AccountS
     public Account deposit(Long accountId, Money amount, String note) {
         validateAmountPositive(amount);
 
-        return executeTransactionFunction(em -> {
-            AccountRepository accountRepo = new AccountRepositoryImpl(em);
-            TransactionRepository txnRepo = new TransactionRepositoryImpl(em);
+        ReentrantLock lock = AccountLocks.of(accountId);
 
-            Account acc = accountRepo.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
+        lock.lock();
 
-            validateAccountActive(acc);
-            validateSameCurrency(acc, amount);
+        try {
+            return executeTransactionFunction(em -> {
+                AccountRepository accountRepo = new AccountRepositoryImpl(em);
+                TransactionRepository txnRepo = new TransactionRepositoryImpl(em);
 
-            Money newBal = acc.getBalance().plus(amount);
-            acc.setBalance(newBal);
+                Account acc = accountRepo.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
 
-            accountRepo.save(acc);
-            txnRepo.save(
-                    Transaction.builder()
-                            .account(acc)
-                            .type(TransactionType.DEPOSIT)
-                            .amount(amount)
-                            .balanceAfter(newBal)
-                            .narrative(note)
-                            .build()
-            );
+                validateAccountActive(acc);
+                validateSameCurrency(acc, amount);
 
-            return acc;
-        });
+                Money newBal = acc.getBalance().plus(amount);
+                acc.setBalance(newBal);
+
+                accountRepo.save(acc);
+                txnRepo.save(
+                        Transaction.builder()
+                                .account(acc)
+                                .type(TransactionType.DEPOSIT)
+                                .amount(amount)
+                                .balanceAfter(newBal)
+                                .narrative(note)
+                                .build()
+                );
+
+                return acc;
+            });
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
     public Account withdraw(Long accountId, Money amount, String note) {
         validateAmountPositive(amount);
 
-        return executeTransactionFunction(em -> {
-            AccountRepository accountRepo = new AccountRepositoryImpl(em);
-            TransactionRepository txnRepo = new TransactionRepositoryImpl(em);
+        ReentrantLock lock = AccountLocks.of(accountId);
 
-            Account acc = accountRepo.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
+        lock.lock();
 
-            validateAccountActive(acc);
-            validateSameCurrency(acc, amount);
+        try {
+            return executeTransactionFunction(em -> {
+                AccountRepository accountRepo = new AccountRepositoryImpl(em);
+                TransactionRepository txnRepo = new TransactionRepositoryImpl(em);
 
-            if (!acc.canDebit(amount)) {
-                throw new InsufficientFundsException("Insufficient funds or overdraft limit exceeded.");
-            }
+                Account acc = accountRepo.findById(accountId).orElseThrow(() -> new AccountNotFoundException(accountId));
 
-            Money newBal = acc.getBalance().minus(amount);
-            acc.setBalance(newBal);
+                validateAccountActive(acc);
+                validateSameCurrency(acc, amount);
 
-            accountRepo.save(acc);
-            txnRepo.save(
-                    Transaction.builder()
-                            .account(acc)
-                            .type(TransactionType.WITHDRAWAL)
-                            .amount(amount)
-                            .balanceAfter(newBal)
-                            .narrative(note)
-                            .build()
-            );
+                if (!acc.canDebit(amount)) {
+                    throw new InsufficientFundsException("Insufficient funds or overdraft limit exceeded.");
+                }
 
-            return acc;
-        });
+                Money newBal = acc.getBalance().minus(amount);
+                acc.setBalance(newBal);
+
+                accountRepo.save(acc);
+                txnRepo.save(
+                        Transaction.builder()
+                                .account(acc)
+                                .type(TransactionType.WITHDRAWAL)
+                                .amount(amount)
+                                .balanceAfter(newBal)
+                                .narrative(note)
+                                .build()
+                );
+
+                return acc;
+            });
+        } finally {
+            lock.unlock();
+        }
     }
 
     @Override
     public void transfer(Long fromId, Long toId, Money amount, String note) {
         if (fromId.equals(toId)) throw new IllegalArgumentException("Cannot transfer to the same account.");
-
         validateAmountPositive(amount);
 
-        executeTransactionConsumer(em -> {
-            AccountRepository accountRepo = new AccountRepositoryImpl(em);
-            TransactionRepository txnRepo = new TransactionRepositoryImpl(em);
+        long firstId = Math.min(fromId, toId);
+        long secondId = Math.max(fromId, toId);
 
-            Account from = accountRepo.findById(fromId).orElseThrow(() -> new AccountNotFoundException(fromId));
-            Account to = accountRepo.findById(toId).orElseThrow(() -> new AccountNotFoundException(toId));
+        ReentrantLock firstLock = AccountLocks.of(firstId);
+        ReentrantLock secondLock = AccountLocks.of(secondId);
 
-            validateAccountActive(from);
-            validateAccountActive(to);
-            validateSameCurrency(from, amount);
-            validateSameCurrency(to, amount);
+        firstLock.lock();
 
-            if (!from.getBalance().getCurrency().equals(to.getBalance().getCurrency())) {
-                throw new InvalidCurrencyException("Accounts have different currencies.");
+        try {
+            secondLock.lock();
+
+            try {
+                executeTransactionConsumer(em -> {
+                    AccountRepository accountRepo = new AccountRepositoryImpl(em);
+                    TransactionRepository txnRepo = new TransactionRepositoryImpl(em);
+
+                    Account from = accountRepo.findById(fromId).orElseThrow(() -> new AccountNotFoundException(fromId));
+                    Account to = accountRepo.findById(toId).orElseThrow(() -> new AccountNotFoundException(toId));
+
+                    validateAccountActive(from);
+                    validateAccountActive(to);
+                    validateSameCurrency(from, amount);
+                    validateSameCurrency(to, amount);
+
+                    if (!from.getBalance().getCurrency().equals(to.getBalance().getCurrency())) {
+                        throw new InvalidCurrencyException("Accounts have different currencies.");
+                    }
+
+                    if (!from.canDebit(amount)) {
+                        throw new InsufficientFundsException("Insufficient funds or overdraft limit exceeded.");
+                    }
+
+                    String correlationId = UUID.randomUUID().toString();
+
+                    Money fromNew = from.getBalance().minus(amount);
+                    from.setBalance(fromNew);
+
+                    accountRepo.save(from);
+                    txnRepo.save(
+                            Transaction.builder()
+                                    .account(from)
+                                    .type(TransactionType.TRANSFER_OUT)
+                                    .amount(amount)
+                                    .balanceAfter(fromNew)
+                                    .correlationId(correlationId)
+                                    .narrative(note)
+                                    .build()
+                    );
+
+                    Money toNew = to.getBalance().plus(amount);
+                    to.setBalance(toNew);
+
+                    accountRepo.save(to);
+                    txnRepo.save(
+                            Transaction.builder()
+                                    .account(to)
+                                    .type(TransactionType.TRANSFER_IN)
+                                    .amount(amount)
+                                    .balanceAfter(toNew)
+                                    .correlationId(correlationId)
+                                    .narrative(note)
+                                    .build()
+                    );
+                });
+            } finally {
+                secondLock.unlock();
             }
-
-            if (!from.canDebit(amount)) {
-                throw new InsufficientFundsException("Insufficient funds or overdraft limit exceeded.");
-            }
-
-            String correlationId = UUID.randomUUID().toString();
-
-            Money fromNew = from.getBalance().minus(amount);
-            from.setBalance(fromNew);
-
-            accountRepo.save(from);
-            txnRepo.save(
-                    Transaction.builder()
-                            .account(from)
-                            .type(TransactionType.TRANSFER_OUT)
-                            .amount(amount)
-                            .balanceAfter(fromNew)
-                            .correlationId(correlationId)
-                            .narrative(note)
-                            .build()
-            );
-
-            Money toNew = to.getBalance().plus(amount);
-            to.setBalance(toNew);
-
-            accountRepo.save(to);
-            txnRepo.save(
-                    Transaction.builder()
-                            .account(to)
-                            .type(TransactionType.TRANSFER_IN)
-                            .amount(amount)
-                            .balanceAfter(toNew)
-                            .correlationId(correlationId)
-                            .narrative(note)
-                            .build()
-            );
-        });
+        } finally {
+            firstLock.unlock();
+        }
     }
 
     ////////////////////////////////////
