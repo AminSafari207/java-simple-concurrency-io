@@ -32,7 +32,10 @@ public class CustomerServiceImpl extends TransactionalService implements Custome
             CustomerRepository customerRepo = new CustomerRepositoryImpl(em);
 
             String email = newCustomer.getEmail();
-            customerRepo.findByEmail(email).orElseThrow(() -> new DuplicateEmailException(email));
+
+            if (customerRepo.findByEmail(email).isPresent()) {
+                throw new DuplicateEmailException(email);
+            }
 
             return customerRepo.save(newCustomer);
         });
