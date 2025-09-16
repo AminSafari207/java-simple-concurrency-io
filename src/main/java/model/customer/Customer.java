@@ -40,7 +40,7 @@ public class Customer extends BaseEntity {
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 
-    @OneToMany(mappedBy = "customer", fetch = FetchType.LAZY)
+    @OneToMany(mappedBy = "customer", fetch = FetchType.EAGER)
     @Builder.Default
     private List<Account> accounts = new ArrayList<>();
 
