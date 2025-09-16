@@ -36,6 +36,7 @@ public class Customer extends BaseEntity {
     @Column(nullable = false, unique = true)
     private String email;
 
+    @NotBlank
     @Column(name = "phone_number", nullable = false)
     private String phoneNumber;
 
