@@ -4,6 +4,7 @@ import enums.AccountStatus;
 import exceptions.account.AccountNotFoundException;
 import exceptions.account.InsufficientFundsException;
 import exceptions.account.InvalidCurrencyException;
+import io.TransactionReportIO;
 import jakarta.persistence.EntityManagerFactory;
 import model.account.Account;
 import model.common.Money;
@@ -48,15 +49,18 @@ public class AccountServiceImpl extends TransactionalService implements AccountS
                 acc.setBalance(newBal);
 
                 accountRepo.save(acc);
-                txnRepo.save(
-                        Transaction.builder()
-                                .account(acc)
-                                .type(TransactionType.DEPOSIT)
-                                .amount(amount)
-                                .balanceAfter(newBal)
-                                .narrative(note)
-                                .build()
-                );
+
+                Transaction txn = Transaction.builder()
+                        .account(acc)
+                        .type(TransactionType.DEPOSIT)
+                        .amount(amount)
+                        .balanceAfter(newBal)
+                        .narrative(note)
+                        .build();
+
+                txnRepo.save(txn);
+
+                TransactionReportIO.appendTransaction(txn);
 
                 return acc;
             });
@@ -91,15 +95,18 @@ public class AccountServiceImpl extends TransactionalService implements AccountS
                 acc.setBalance(newBal);
 
                 accountRepo.save(acc);
-                txnRepo.save(
-                        Transaction.builder()
-                                .account(acc)
-                                .type(TransactionType.WITHDRAWAL)
-                                .amount(amount)
-                                .balanceAfter(newBal)
-                                .narrative(note)
-                                .build()
-                );
+
+                Transaction txn = Transaction.builder()
+                        .account(acc)
+                        .type(TransactionType.WITHDRAWAL)
+                        .amount(amount)
+                        .balanceAfter(newBal)
+                        .narrative(note)
+                        .build();
+
+                txnRepo.save(txn);
+
+                TransactionReportIO.appendTransaction(txn);
 
                 return acc;
             });
@@ -151,31 +158,35 @@ public class AccountServiceImpl extends TransactionalService implements AccountS
                     from.setBalance(fromNew);
 
                     accountRepo.save(from);
-                    txnRepo.save(
-                            Transaction.builder()
-                                    .account(from)
-                                    .type(TransactionType.TRANSFER_OUT)
-                                    .amount(amount)
-                                    .balanceAfter(fromNew)
-                                    .correlationId(correlationId)
-                                    .narrative(note)
-                                    .build()
-                    );
+
+                    Transaction fromTxn = Transaction.builder()
+                            .account(from)
+                            .type(TransactionType.TRANSFER_OUT)
+                            .amount(amount)
+                            .balanceAfter(fromNew)
+                            .correlationId(correlationId)
+                            .narrative(note)
+                            .build();
+
+                    txnRepo.save(fromTxn);
 
                     Money toNew = to.getBalance().plus(amount);
                     to.setBalance(toNew);
 
                     accountRepo.save(to);
-                    txnRepo.save(
-                            Transaction.builder()
-                                    .account(to)
-                                    .type(TransactionType.TRANSFER_IN)
-                                    .amount(amount)
-                                    .balanceAfter(toNew)
-                                    .correlationId(correlationId)
-                                    .narrative(note)
-                                    .build()
-                    );
+
+                    Transaction toTxn = Transaction.builder()
+                            .account(to)
+                            .type(TransactionType.TRANSFER_IN)
+                            .amount(amount)
+                            .balanceAfter(toNew)
+                            .correlationId(correlationId)
+                            .narrative(note)
+                            .build();
+
+                    txnRepo.save(toTxn);
+
+                    TransactionReportIO.appendTransaction(toTxn);
                 });
             } finally {
                 secondLock.unlock();
