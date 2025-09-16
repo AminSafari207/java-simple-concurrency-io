@@ -46,11 +46,8 @@ public abstract class Account extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(name = "customer_id", nullable = false)
+    @Setter
     private Customer customer;
-
-    protected void setCustomer(Customer customer) {
-        this.customer = customer;
-    }
 
     public boolean canDebit(Money amount) {
         return balance != null && !amount.isNegative() && balance.isGreaterOrEqual(amount);
